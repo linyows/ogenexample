@@ -1,0 +1,12 @@
+version: "2"
+sql:
+- name: mysql
+  schema: schema.sql
+  queries: query.sql
+  engine: mysql
+  rules:
+  - sqlc/db-prepare
+  gen:
+    go:
+      package: dbgen
+      out: dbgen
