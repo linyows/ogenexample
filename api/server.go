@@ -37,6 +37,9 @@ func Server() (*oasgen.Server, error) {
 	}
 	tp := setupDebugTracerProvider()
 	mp := setupDebugMeterProvider()
+	// Set to global
+	//otel.SetTracerProvider(tp)
+	//otel.SetMeterProvider(mp)
 
 	return oasgen.NewServer(
 		&handler{
@@ -100,6 +103,12 @@ func customErrorHandler() oasgen.ServerOption {
 	})
 }
 
+const (
+	appName = "ogenexample"
+	appVer  = "v1.2.3"
+	appEnv  = "dev"
+)
+
 func setupDebugTracerProvider() *trace.TracerProvider {
 	//exp, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
 	exp, err := stdouttrace.New()
@@ -111,24 +120,36 @@ func setupDebugTracerProvider() *trace.TracerProvider {
 		trace.WithBatcher(exp),
 		trace.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("ogenexample"),
-			semconv.ServiceVersionKey.String("v0.0.999"),
-			semconv.DeploymentEnvironmentKey.String("dev!!!"),
+			semconv.ServiceName(appName),
+			semconv.ServiceVersion(appVer),
+			semconv.DeploymentEnvironment(appEnv),
 		)),
 	)
-	//otel.SetTracerProvider(tp)
 	return tp
 }
 
 func setupDebugMeterProvider() *metric.MeterProvider {
-	// exporter, err := stdoutmetric.New(stdoutmetric.WithPrettyPrint())
+	//exporter, err := stdoutmetric.New(stdoutmetric.WithPrettyPrint())
 	exporter, err := stdoutmetric.New()
 	if err != nil {
 		log.Fatalf("Failed to create stdout metric exporter: %v", err)
 	}
 
+	res, err := resource.Merge(resource.Default(),
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceName(appName),
+			semconv.ServiceVersion(appVer),
+			semconv.DeploymentEnvironment(appEnv),
+		))
+	if err != nil {
+		log.Fatalf("Failed to merge resource: %v", err)
+	}
+
 	reader := metric.NewPeriodicReader(exporter)
-	mp := metric.NewMeterProvider(metric.WithReader(reader))
-	//otel.SetMeterProvider(mp)
+	mp := metric.NewMeterProvider(
+		metric.WithResource(res),
+		metric.WithReader(reader),
+	)
 	return mp
 }
