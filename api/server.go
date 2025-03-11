@@ -23,26 +23,41 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
-var _ oasgen.Handler = (*handler)(nil)
-
-type handler struct {
-	q  *dbgen.Queries
-	tp *trace.TracerProvider
-}
-
-func Server() (*oasgen.Server, error) {
+func Server() (*oasgen.Server, error, func(ctx context.Context) error) {
 	db, err := connectDB()
 	if err != nil {
-		return nil, err
+		return nil, err, nil
 	}
-	tp := setupDebugTracerProvider()
-	mp := setupDebugMeterProvider()
+	tp := setupTracerProvider()
+	mp := setupMeterProvider()
 	// Set to global
 	//otel.SetTracerProvider(tp)
 	//otel.SetMeterProvider(mp)
 
-	return oasgen.NewServer(
-		&handler{
+	closer := func(ctx context.Context) error {
+		dberr := db.Close()
+
+		_ = tp.ForceFlush(ctx)
+		tperr := tp.Shutdown(ctx)
+
+		_ = mp.ForceFlush(ctx)
+		mperr := mp.Shutdown(ctx)
+
+		if dberr != nil {
+			return dberr
+		}
+		if tperr != nil {
+			return tperr
+		}
+		if mperr != nil {
+			return mperr
+		}
+
+		return nil
+	}
+
+	srv, err := oasgen.NewServer(
+		&petHandler{
 			q:  dbgen.New(db),
 			tp: tp,
 		},
@@ -51,6 +66,8 @@ func Server() (*oasgen.Server, error) {
 		oasgen.WithTracerProvider(tp),
 		oasgen.WithMeterProvider(mp),
 	)
+
+	return srv, err, closer
 }
 
 func connectDB() (*sql.DB, error) {
@@ -109,7 +126,7 @@ const (
 	appEnv  = "dev"
 )
 
-func setupDebugTracerProvider() *trace.TracerProvider {
+func setupTracerProvider() *trace.TracerProvider {
 	//exp, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
 	exp, err := stdouttrace.New()
 	if err != nil {
@@ -128,9 +145,9 @@ func setupDebugTracerProvider() *trace.TracerProvider {
 	return tp
 }
 
-func setupDebugMeterProvider() *metric.MeterProvider {
-	//exporter, err := stdoutmetric.New(stdoutmetric.WithPrettyPrint())
-	exporter, err := stdoutmetric.New()
+func setupMeterProvider() *metric.MeterProvider {
+	//exp, err := stdoutmetric.New(stdoutmetric.WithPrettyPrint())
+	exp, err := stdoutmetric.New()
 	if err != nil {
 		log.Fatalf("Failed to create stdout metric exporter: %v", err)
 	}
@@ -146,10 +163,9 @@ func setupDebugMeterProvider() *metric.MeterProvider {
 		log.Fatalf("Failed to merge resource: %v", err)
 	}
 
-	reader := metric.NewPeriodicReader(exporter)
 	mp := metric.NewMeterProvider(
 		metric.WithResource(res),
-		metric.WithReader(reader),
+		metric.WithReader(metric.NewPeriodicReader(exp)),
 	)
 	return mp
 }

@@ -6,9 +6,17 @@ import (
 
 	"github.com/linyows/ogenexample/db/dbgen"
 	"github.com/linyows/ogenexample/oas/oasgen"
+	"go.opentelemetry.io/otel/sdk/trace"
 )
 
-func (h *handler) AddPet(ctx context.Context, req *oasgen.Pet) (*oasgen.Pet, error) {
+var _ oasgen.Handler = (*petHandler)(nil)
+
+type petHandler struct {
+	q  *dbgen.Queries
+	tp *trace.TracerProvider
+}
+
+func (h *petHandler) AddPet(ctx context.Context, req *oasgen.Pet) (*oasgen.Pet, error) {
 	tracer := h.tp.Tracer("db-trace")
 	ctx, span := tracer.Start(ctx, "sqlc.CreatePet")
 	defer span.End()
@@ -36,7 +44,7 @@ func (h *handler) AddPet(ctx context.Context, req *oasgen.Pet) (*oasgen.Pet, err
 	}, nil
 }
 
-func (h *handler) DeletePet(ctx context.Context, params oasgen.DeletePetParams) error {
+func (h *petHandler) DeletePet(ctx context.Context, params oasgen.DeletePetParams) error {
 	tracer := h.tp.Tracer("db-trace")
 	ctx, span := tracer.Start(ctx, "sqlc.DeletePet")
 	defer span.End()
@@ -47,7 +55,7 @@ func (h *handler) DeletePet(ctx context.Context, params oasgen.DeletePetParams) 
 	return nil
 }
 
-func (h *handler) GetPetById(ctx context.Context, params oasgen.GetPetByIdParams) (oasgen.GetPetByIdRes, error) {
+func (h *petHandler) GetPetById(ctx context.Context, params oasgen.GetPetByIdParams) (oasgen.GetPetByIdRes, error) {
 	tracer := h.tp.Tracer("db-trace")
 	ctx, span := tracer.Start(ctx, "sqlc.GetPetByID")
 	defer span.End()
@@ -63,7 +71,7 @@ func (h *handler) GetPetById(ctx context.Context, params oasgen.GetPetByIdParams
 	}, nil
 }
 
-func (h *handler) UpdatePet(ctx context.Context, params oasgen.UpdatePetParams) error {
+func (h *petHandler) UpdatePet(ctx context.Context, params oasgen.UpdatePetParams) error {
 	tracer := h.tp.Tracer("db-trace")
 	ctx, span := tracer.Start(ctx, "sqlc.UpdatePet")
 	defer span.End()
@@ -75,7 +83,7 @@ func (h *handler) UpdatePet(ctx context.Context, params oasgen.UpdatePetParams) 
 	})
 }
 
-func (h *handler) NewError(ctx context.Context, err error) (r *oasgen.ErrorStatusCode) {
+func (h *petHandler) NewError(ctx context.Context, err error) (r *oasgen.ErrorStatusCode) {
 	return &oasgen.ErrorStatusCode{
 		StatusCode: http.StatusInternalServerError,
 		Response: oasgen.Error{
